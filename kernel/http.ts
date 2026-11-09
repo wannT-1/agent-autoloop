@@ -281,13 +281,17 @@ async function route(call: Call): Promise<Response> {
   }
   if (method === "POST" && path === "/v1/tell") return tell(call);
   if (method === "GET" && path === "/v1/work") return work(call);
-  const [, runPart, action] = /^\/v1\/runs\/([1-9][0-9]*)\/(started|result|cancel|why)$/.exec(path) ?? [];
+  const [, runPart, action] = /^\/v1\/runs\/([1-9][0-9]*)\/(started|result|cancel|retry|why)$/.exec(path) ?? [];
   const runId = Number(runPart);
   if (method === "GET" && action === "why") {
     requireKey(call, "owner");
     return json(services.why(runId));
   }
   if (method === "POST" && action === "cancel") return ownerAct(call, "cancel", runId);
+  if (method === "POST" && action === "retry") {
+    requireKey(call, "owner");
+    return json(act(call, "retry", runId));
+  }
   if (method === "POST" && action === "started") {
     act(call, "started", runId, token, await readJson(request));
     return json({ ok: true });

@@ -108,6 +108,7 @@ test("MCP stdio initializes and exposes only the typed hub operations", async ()
     { id: 8, method: "tools/call", params: { name: "pause", arguments: { rule: "巡检", reason: "上游在修" } } },
     { id: 9, method: "tools/call", params: { name: "resume", arguments: { rule: "巡检" } } },
     { id: 10, method: "tools/call", params: { name: "run", arguments: { rule: "巡检", reason: "看一眼" } } },
+    { id: 11, method: "tools/call", params: { name: "retry", arguments: { run: 7 } } },
   ];
   child.stdin.end(messages.map((m) => JSON.stringify({ jsonrpc: "2.0", ...m })).join("\n") + "\n");
   await once(child, "close");
@@ -117,7 +118,7 @@ test("MCP stdio initializes and exposes only the typed hub operations", async ()
     .trim()
     .split("\n")
     .map((l) => JSON.parse(l));
-  assert.equal(responses.length, 10);
+  assert.equal(responses.length, 11);
   assert.equal(
     responses[0].result.serverInfo.version,
     versionName(),
@@ -125,7 +126,7 @@ test("MCP stdio initializes and exposes only the typed hub operations", async ()
   );
   const get = (id: number) => responses.find((r) => r.id === id);
   assert.equal(get(1).result.protocolVersion, "2025-11-25");
-  for (const name of ["answer", "pause", "resume", "run"])
+  for (const name of ["answer", "pause", "resume", "run", "retry"])
     assert.ok(get(2).result.tools.some((t: any) => t.name === name));
   assert.equal(get(3).result.isError, undefined);
   assert.equal(get(4).error.code, -32602);
@@ -137,6 +138,7 @@ test("MCP stdio initializes and exposes only the typed hub operations", async ()
     ["/v1/rules/%E5%B7%A1%E6%A3%80/pause", "Bearer owner-key"],
     ["/v1/rules/%E5%B7%A1%E6%A3%80/resume", "Bearer owner-key"],
     ["/v1/rules/%E5%B7%A1%E6%A3%80/run", "Bearer owner-key"],
+    ["/v1/runs/7/retry", "Bearer owner-key"],
     ["/v1/runs/999/why", "Bearer owner-key"],
     ["/v1/state", "Bearer owner-key"],
   ]);

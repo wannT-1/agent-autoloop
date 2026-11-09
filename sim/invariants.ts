@@ -86,8 +86,15 @@ export function invariants(current: View, log: Fact[], before?: Snapshot) {
         assert.equal(now.choice, c.choice);
         assert.equal(now.answer, c.answer);
       }
+    // A retry is the owner putting that same cancelled round back on the queue. Nothing else may rewrite a finished one.
+    const latest = log.at(-1);
+    const retried = new Set(
+      latest?.type === "retry"
+        ? latest.changes.filter((change) => change.table === "runs" && change.row).map((change) => change.key)
+        : [],
+    );
     for (const r of rows(before, "runs"))
-      if (["done", "nothing", "cancelled"].includes(r.state))
+      if (["done", "nothing", "cancelled"].includes(r.state) && !retried.has(String(r.id)))
         assert.deepEqual(view.tables.runs[r.id], r, "完成的回执再次生效");
   }
   if (log.length) assert.deepEqual(view.tables.due, deadlines(current, log.at(-1)!.at), "到期表和重算的不一样");

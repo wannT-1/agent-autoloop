@@ -54,6 +54,7 @@ export function hubClient(url: string, key: string) {
       call("DELETE", `/v1/keys/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`),
     state: (before?: number) => call("GET", before === undefined ? "/v1/state" : `/v1/state?before=${before}`),
     cancel: (run: number) => call("POST", `/v1/runs/${run}/cancel`, { body: {} }),
+    retry: (run: number) => call("POST", `/v1/runs/${run}/retry`, { body: {} }),
     resolve: (card: number, reason: string) => call("POST", `/v1/cards/${card}/resolve`, { body: { reason } }),
     // Rule control: facts in the log, rules.json stays as the owner wrote it.
     pause: (rule: string, body: { reason?: string; until?: string } = {}) =>

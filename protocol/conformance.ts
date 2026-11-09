@@ -37,6 +37,7 @@ export async function conformance(base: string, config: Probe, request: typeof f
     ["/v1/runs/1/started", {}, []],
     ["/v1/runs/1/result", {}, []],
     ["/v1/runs/1/cancel", {}, ["owner"]],
+    ["/v1/runs/1/retry", {}, ["owner"]],
     ["/v1/runs/1/why", undefined, ["owner"]],
     ["/v1/cards/1/answer", {}, ["owner", "channel"]],
     ["/v1/cards/1/resolve", {}, ["owner"]],

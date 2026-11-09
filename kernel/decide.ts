@@ -343,7 +343,7 @@ function stopRun(draft: Draft, run: Row, why: string, summary: string, words: st
 
 const ruleGone = (run: Row): [string, string] => [
   `规则「${run.rule}」不在了，不再派发`,
-  `规则「${run.rule}」不在了（删掉或改名了），排着的这一轮不再派发。还要做的话重新触发这件事。`,
+  `规则「${run.rule}」不在了（删掉或改名了），排着的这一轮不再派发。规则加回来、没有暂停时可以重试这一轮；也可以重新触发这件事。`,
 ];
 
 /** A run that didn't get through waits to try again, and takes along whatever came in for the same thing meanwhile. */
@@ -367,7 +367,7 @@ function retryLater(draft: Draft, run: Row, result: Result) {
   if (attempts >= MAX_ATTEMPTS) {
     // Runs queued for this thread stay apart: they came in since, and get their own count and their own go.
     const summary = `连续 ${MAX_ATTEMPTS} 次没跑成，不再自动重试`;
-    const words = `连续 ${MAX_ATTEMPTS} 次自动处理没跑完（卡在：${error}），不再自动重试。解决后重新触发这件事，它会从头开始。`;
+    const words = `连续 ${MAX_ATTEMPTS} 次自动处理没跑完（卡在：${error}），不再自动重试。解决后可以重试这一轮，事件和会话都还在；重新触发这件事则从头开始。`;
     put(draft, "runs", id, failure);
     stopRun(draft, run, "stopped", summary, words);
     return rejected;
@@ -656,6 +656,46 @@ const CONTROL = {
   },
 };
 
+/** Puts one stopped round back on the queue. It is the same round, so its events and session stay; the old execution's
+ * token must not still be accepted, which is why the claim and the last receipt's marks are cleared. A round already
+ * waiting is this request again. */
+function retry(draft: Draft, id: number) {
+  const run = draft.view.get("runs", id);
+  if (!run) throw new NotFound("没有这一轮");
+  if (run.state === "queued") return { run: id, state: "queued", changed: false };
+  if (run.state === "claimed" || run.state === "unknown") throw new InputError("这一轮还在跑，不能重试");
+  if (run.state !== "cancelled") throw new InputError("这一轮已经做完了，不能重试");
+  const rule = draft.rules.rules.find((rule) => rule.name === run.rule);
+  if (!rule) {
+    if (draft.rules.elsewhere.some((task) => task.name === run.rule)) {
+      throw new InputError(`「${run.rule}」是在别处跑的定时任务，中台不启动它，也就重试不了`);
+    }
+    throw new Conflict(`规则「${run.rule}」不在了，不能重试`);
+  }
+  if (pauseOf(draft.view, rule, draft.now)) throw new Conflict(`规则「${run.rule}」暂停中，先恢复再重试`);
+  const cleared = nulls(
+    "claim",
+    "claimed_at",
+    "seen_at",
+    "cancel_at",
+    "issued",
+    "last_issued",
+    "last_result",
+    "last_answer",
+    "finished_at",
+    "summary",
+    "error",
+  );
+  put(draft, "runs", id, { state: "queued", attempts: 0, not_before: draft.at, manual: 1, ...cleared });
+  assignQueued(draft, draft.view.get("runs", id)!);
+  closeOpen(
+    draft,
+    (key) => key === `run:${id}:failing` || key === `run:${id}:stopped` || key === `run:${id}:rule-gone`,
+    "重新排队了",
+  );
+  return { run: id, state: "queued", changed: true };
+}
+
 /** Every input there is, each with its arguments named. What one returns is what the caller is told. */
 const HANDLERS: Record<string, (draft: Draft, ...args: any[]) => unknown> = {
   rules(draft, rules) {
@@ -732,6 +772,7 @@ const HANDLERS: Record<string, (draft: Draft, ...args: any[]) => unknown> = {
     } else if (run.state === "claimed") put(draft, "runs", id, { cancel_at: draft.at });
     else throw new InputError("这一轮已经结束了");
   },
+  retry,
   resolve(draft, id, reason, by) {
     const card = draft.view.get("cards", id);
     if (!card) throw new NotFound("没有这张卡片");

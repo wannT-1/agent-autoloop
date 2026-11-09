@@ -46,6 +46,7 @@ export function formatWhy(id: number, facts: Fact[]) {
     if (row.finished_at && row.finished_at !== before?.finished_at) {
       add(row.finished_at, `结束：${row.summary || (row.state === "cancelled" ? "已停止" : "没有填写结论")}`);
     }
+    if (fact.type === "retry" && before?.state === "cancelled" && row.state === "queued") add(fact.at, "重新排队");
     if (receipt && row.state === "queued" && row.attempts !== before?.attempts) {
       add(fact.at, `本次未完成：${row.error}；重试时间 ${time(row.not_before)}`);
     }

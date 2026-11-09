@@ -290,7 +290,7 @@ GET /v1/cards/next?wait=50    Authorization: Bearer <通道的密钥>
 
 最小的通道只要十几行：领卡片、发文字和 `link`、报告。`link` 只给配了 `"links": true` 的通道，其他通道这里是 `null`。它打开一个不跑脚本的普通表单页，这张卡片的文字和按钮都在上面，谁拿到链接谁就能答，从卡片创建起 7 天内有效，过期后也不再显示卡片内容，适合只会发文字的群机器人、邮件。能发按钮、能收回调的通道（比如飞书）用按钮，身份由平台核验，更安全。一台电脑上用时 `link` 是本机地址，手机打不开，要手机批请把中台放到有公网地址的机器上，并配好 `publicUrl`。
 
-## 本人：看全局、回答、结案、停止
+## 本人：看全局、回答、结案、停止、重试
 
 ```
 GET  /v1/state              Authorization: Bearer <本人的密钥>
@@ -299,9 +299,17 @@ GET  /v1/state              Authorization: Bearer <本人的密钥>
 POST /v1/cards/56/answer    { "choice": 1 } 或 { "text": "别的想法" }
 POST /v1/cards/56/resolve   { "reason": "不用决定了，因为……" }
 POST /v1/runs/12/cancel     {}
+POST /v1/runs/12/retry      {}
+→ 200 { "run": 12, "state": "queued", "changed": true }
 ```
 
-`agent-autoloop status`、`answer`、`resolve`、`stop` 就是这几个请求。
+`agent-autoloop status`、`answer`、`resolve`、`stop`、`retry` 就是这几个请求。
+
+`retry` 把已经停掉的那一轮重新排队，不新开一轮，也不另记一条 `run.manual` 事件。只接受本人的密钥。
+
+只接受因连续没跑成或被本人停掉而处于 `cancelled` 的一轮。`done` 和 `nothing` 返回 400 `这一轮已经做完了，不能重试`；还在跑（`claimed` 或 `unknown`）返回 400 `这一轮还在跑，不能重试`；没有这一轮返回 404 `没有这一轮`。规则必须还在 `rules.json` 里且没有暂停，否则拒绝、不猜别的规则：不在了返回 409 `规则「…」不在了，不能重试`，暂停中返回 409 `规则「…」暂停中，先恢复再重试`。
+
+重新排队保留这一轮的 `run_events`、`session`、`resume` 和资料。`attempts` 回到 0，`claim`、`issued`、`last_issued`、`last_result`、`last_answer` 清空，`not_before` 改成现在，马上可以领；`runs[].manual` 为 true。还开着的 `run:<id>:failing`、`run:<id>:stopped`、`run:<id>:rule-gone` 一并结案。已经是 `queued` 时再调返回同一轮，`changed` 为 false，不追加事实。命令行是 `agent-autoloop retry <第几轮>`。
 
 整份状态在同一个快照里读出，`seq` 是那时的日志序号：自己做看板的，先取状态，再从 `GET /v1/stream?after=<seq>` 接着读，不漏也不重。`cards`、`recentCards` 在这里多带两项：`lane` 是卡片所在的事项（写了 `parallel` 的规则是事件的对象，别的规则是空字符串），`about` 是提问时留给接着干的那一轮的说明。通道和卡片页拿不到这两项。旧客户端忽略这些字段即可。
 
@@ -349,7 +357,7 @@ POST /v1/rules/巡检/run        { "subject": "#12", "reason": "看一眼" }    
 | 来源把同一条事件发了两遍                 | 只记一次                                                                                                                                                                                                                            |
 | 领活的响应丢了                           | 同一个 `claim` 拿回同一份活                                                                                                                                                                                                         |
 | 交结果的响应丢了                         | 重放得到同样的确认                                                                                                                                                                                                                  |
-| Agent 没跑成                             | 5 分钟后重派，每次翻倍，最长 1 小时；期间来的同一事项的事件并进这一轮；连续第 3 次告诉你；连续第 10 次不再重试，这一轮记为 `cancelled` 并发一张通知卡片，正在跑时新来的事件另算一轮；这一轮结束或被停掉时，说它会再试的卡片一起关掉 |
+| Agent 没跑成                             | 5 分钟后重派，每次翻倍，最长 1 小时；期间来的同一事项的事件并进这一轮；连续第 3 次告诉你；连续第 10 次不再重试，这一轮记为 `cancelled` 并发一张通知卡片，正在跑时新来的事件另算一轮；这一轮结束或被停掉时，说它会再试的卡片一起关掉。解决后可以重试这一轮，事件和会话都还在，失败次数从 0 再计；重新触发来源事件则是新的一轮 |
 | 需要本人恢复浏览器连接、登录或验证       | 本轮结束，保留已完成业务和待验收项，用问题卡片等回答，不自动重派                                                                                                                                                                    |
 | 原会话接不上                             | 开新会话，靠资料文件接着干                                                                                                                                                                                                          |
 | 接上了原会话，干到一半断了               | 算没跑成，留在原会话按上面的节奏重派，不开新会话把业务重做一遍                                                                                                                                                                      |
@@ -382,7 +390,7 @@ POST /v1/rules/巡检/run        { "subject": "#12", "reason": "看一眼" }    
 | 一轮的 token     | 报告这一轮的这一次执行                                      | 碰别的轮次                             |
 | 通道的密钥       | 领卡片、报告、转达 `answerers` 的回答                       | 其他一切                               |
 | 带权限的卡片链接 | 回答这一张卡片                                              | 其他一切                               |
-| 本人的密钥       | 看全部、回答、结案、停止，暂停、恢复、立即运行规则          | 发事件，领活，改规则（规则只在文件里） |
+| 本人的密钥       | 看全部、回答、结案、停止、重试，暂停、恢复、立即运行规则    | 发事件，领活，改规则（规则只在文件里） |
 
 普通访问密钥只保存 SHA-256；本机主密钥另存 `master.key`。接单程序不把中台密钥放进 Agent 的提示词或资料文件，文件系统的访问范围由 Agent 权限决定。
 
@@ -424,7 +432,7 @@ Node 请求转换层只把 Node 的请求变成 Request；文件、SQLite 连接
 
 权限只选一次性的选项：`read` 允许结构化的读和搜索，`edit` 再允许工作目录内的编辑（核对符号链接，经过找不到目标的链接算在目录外），`full` 允许其他操作。权限请求只带工具调用编号时，按这次调用之前说过的种类和路径判断，请求自己带的字段优先。未提供相应选项就取消。权限依赖 Agent 遵守 ACP，不提供额外的系统隔离；规范允许 Agent 不询问就执行，这种操作 `access` 拦不住，要用 Agent 自己的模式限制。官方 Codex 适配器给的拒绝选项（`reject_once`）只有 `cancel`，选了它整轮以 `stopReason: cancelled` 结束，算没跑成，由中台重派；`read`、`edit` 档下要跑命令的请求就是这样回来的，所以 Agent 非跑命令不可时，给 `full` 或用它自己的模式。`model`、`effort` 不生效。核对依据：[初始化](https://agentclientprotocol.com/protocol/v1/initialization)、[会话](https://agentclientprotocol.com/protocol/v1/session-setup)、[工具权限](https://agentclientprotocol.com/protocol/v1/tool-calls)。
 
-`agent-autoloop mcp` 提供 stdio MCP，固定支持 [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle) 版，不支持 2026-07-28 的无握手协议。工具为 `status`、`why`、`answer`、`resolve`、`stop`、`emit`、`tell`、`pause`、`resume`、`run`；按本机已有的本人或来源密钥展示工具，`pause`、`resume`、`run` 和命令行同名命令一样要本人密钥。它调用同样的 HTTP 接口，不直接改数据库；密钥留在本机 `config.json`。MCP 客户端把程序设为 `node`，参数设为引擎的绝对路径 `bin/agent-autoloop.ts` 和 `mcp`，环境里指定 `AGENT_AUTOLOOP_HOME`。标准输出只写 JSON-RPC。消息只按换行分帧；每个工具调用各自回复，慢调用不挡 `ping`。它不区分调用方，都按本人记录（`answer` 记成本人，`emit` 不带层数），不要配进接单程序启动的 CLI 的用户级配置，否则一轮能自己回答自己的卡片。
+`agent-autoloop mcp` 提供 stdio MCP，固定支持 [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle) 版，不支持 2026-07-28 的无握手协议。工具为 `status`、`why`、`answer`、`resolve`、`stop`、`retry`、`emit`、`tell`、`pause`、`resume`、`run`；按本机已有的本人或来源密钥展示工具，`pause`、`resume`、`run`、`retry` 和命令行同名命令一样要本人密钥。它调用同样的 HTTP 接口，不直接改数据库；密钥留在本机 `config.json`。MCP 客户端把程序设为 `node`，参数设为引擎的绝对路径 `bin/agent-autoloop.ts` 和 `mcp`，环境里指定 `AGENT_AUTOLOOP_HOME`。标准输出只写 JSON-RPC。消息只按换行分帧；每个工具调用各自回复，慢调用不挡 `ping`。它不区分调用方，都按本人记录（`answer` 记成本人，`emit` 不带层数），不要配进接单程序启动的 CLI 的用户级配置，否则一轮能自己回答自己的卡片。
 
 ### 通道模板与命令行示例
 

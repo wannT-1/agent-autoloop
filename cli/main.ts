@@ -59,6 +59,7 @@ const HELP = `Agent 自动化中台
   agent-autoloop ask --task <定时任务名>
                                     定时任务问你一件事：标准输入传回执那样的 ask；你答了，它的 Agent 在 cwd 接着做
   agent-autoloop stop <第几轮>           停掉一轮
+  agent-autoloop retry <第几轮>          把停掉的一轮重新排队，保留原来的事件和会话
   agent-autoloop key new <source|worker|channel|owner> <名字>
                                     新建一把密钥（只显示这一次）
   agent-autoloop key list                有哪些密钥
@@ -150,6 +151,7 @@ rules.json 里这个定时任务要写 cwd；你答了，中台叫醒它的 Agen
   run: { flags: ["subject", "reason"], usage: "用法：agent-autoloop run <规则> [--subject 对象] [--reason 说明]" },
   service: { flags: [], usage: "用法：agent-autoloop service install|remove" },
   status: { flags: ["json"], usage: STATUS_USAGE },
+  retry: { flags: [], usage: "用法：agent-autoloop retry <第几轮>" },
   stop: { flags: [], usage: "用法：agent-autoloop stop <第几轮>" },
   tell: { flags: ["task"], usage: "用法：agent-autoloop tell <编号> [--task 定时任务名]，内容从标准输入读" },
   try: { flags: [], usage: TRY_USAGE },
@@ -710,6 +712,12 @@ async function stop(args: string[]) {
   console.log("通知它停了。");
 }
 
+async function retryRun(args: string[]) {
+  const id = runOf(args[0], "用法：agent-autoloop retry <第几轮>");
+  const done = await ownerClient().retry(id);
+  console.log(done.changed ? `重新排上了：第 ${done.run} 轮。` : `第 ${done.run} 轮已经在排队。`);
+}
+
 /** A command run right after starting the service would find no hub yet: this machine's is waited for, if it has one. */
 async function waitForHub() {
   const config = readConfig();
@@ -815,6 +823,7 @@ const commands: Record<string, () => unknown> = {
   tell: () => tell(args),
   ask: () => ask(args),
   stop: () => stop(args),
+  retry: () => retryRun(args),
   backup: () => backupCommand(args),
   restore: () => restoreCommand(args),
   update,

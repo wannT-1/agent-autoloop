@@ -102,7 +102,7 @@ External events work the same way once the source is connected. To hand new GitH
 }
 ```
 
-`agent-autoloop pause <rule>` and `resume <rule>` pause and resume one rule: while paused it skips its scheduled times and doesn't take events, and a resume doesn't catch up on what was skipped. `agent-autoloop run <rule>` runs it once now. These are kept in the hub's log; `rules.json` is not changed.
+`agent-autoloop pause <rule>` and `resume <rule>` pause and resume one rule: while paused it skips its scheduled times and doesn't take events, and a resume doesn't catch up on what was skipped. `agent-autoloop run <rule>` runs it once now. These are kept in the hub's log; `rules.json` is not changed. `agent-autoloop retry <round>` queues a round that stopped after failing, or that you stopped, again — the same round, with its events and session.
 
 Changes take effect within seconds of saving. Run `agent-autoloop check` to validate, `agent-autoloop check <file>` to validate a draft without touching the running hub, `agent-autoloop rules explain [file]` to see the rules in effect and their next runs (a draft file too), and `agent-autoloop emit <type> --dry-run` to preview who an event would go to (it doesn't contact the hub or write to the log). If you make a mistake, or the file is deleted or can't be read, the hub keeps running the previous valid rules and sends you a card about it.
 

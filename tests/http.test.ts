@@ -265,6 +265,10 @@ test("the owner's key reads everything, answers, resolves and stops; nothing els
   assert.deepEqual([resolved.status, resolved.json.changed], [200, true]);
   const waiting = await call("/v1/work?claim=c-10&wait=0", { key: keys.w1 });
   assert.equal((await call(`/v1/runs/${waiting.json.job.run}/cancel`, { body: {} })).status, 401);
+  assert.equal((await call(`/v1/runs/${waiting.json.job.run}/retry`, { body: {} })).status, 401);
+  const refused = await call(`/v1/runs/${waiting.json.job.run}/retry`, { key: keys.owner, body: {} });
+  assert.equal(refused.status, 400);
+  assert.match(refused.json.error, /还在跑/);
   assert.equal((await call(`/v1/runs/${waiting.json.job.run}/cancel`, { key: keys.owner, body: {} })).status, 200);
   assert.deepEqual((await call("/v1/work?claim=c-11&wait=0", { key: keys.w1 })).json.cancel, [waiting.json.job.run]);
 });

@@ -35,6 +35,9 @@ for (const args of [
   ["stop", "abc"],
   ["stop", "0"],
   ["stop", "1.5"],
+  ["retry"],
+  ["retry", "abc"],
+  ["retry", "0"],
   ["why"],
   ["why", "--json"],
   ["why", "x"],
@@ -49,6 +52,7 @@ for (const args of [
 test("a real run number still goes on to the hub", async () => {
   for (const args of [
     ["stop", "3"],
+    ["retry", "3"],
     ["why", "3", "--json"],
     ["why", "--json", "3"],
   ]) {
